@@ -130,6 +130,109 @@ class GitHubViewModel : ViewModel() {
 
     private fun authHeader() = "Bearer $token"
 
+    /**
+     * Erstellt ein neues GitHub-Repo und laedt alle Grundgeruest-Dateien
+     * fuer eine neue Android-App hoch. packageSuffix z.B. "wetterapp",
+     * appNameCapitalized z.B. "WetterApp", displayName z.B. "Wetter App".
+     */
+    fun createNewProject(repoName: String, packageSuffix: String, appNameCapitalized: String, displayName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isLoading.emit(true)
+            try {
+                log("Erstelle Repo: $repoName...", LogLevel.INFO)
+                val createdOk = createRepo(repoName)
+                if (!createdOk) {
+                    throw Exception("Repo konnte nicht erstellt werden (existiert es schon?)")
+                }
+                log("Repo erstellt: $owner/$repoName", LogLevel.SUCCESS)
+
+                // Nach dem Erstellen kurz warten, GitHub braucht einen Moment
+                kotlinx.coroutines.delay(1500)
+
+                val previousRepo = repo
+                repo = repoName
+
+                val files = ProjectTemplates.getAllFiles(packageSuffix, appNameCapitalized, displayName)
+                log("Lade ${files.size} Grundgeruest-Dateien hoch...", LogLevel.INFO)
+
+                for (file in files) {
+                    val success = uploadFileDirectly(file.path, file.content)
+                    if (success) {
+                        log("Hochgeladen: ${file.path}", LogLevel.SUCCESS)
+                    } else {
+                        log("Fehler bei: ${file.path}", LogLevel.ERROR)
+                    }
+                }
+
+                log("Projekt komplett erstellt: $owner/$repoName", LogLevel.SUCCESS)
+
+                // Auf das neue Repo umschalten und speichern
+                saveCredentials(token, owner, repoName)
+                loadFiles()
+            } catch (e: Exception) {
+                log("Fehler beim Projekt-Erstellen: ${e.message ?: e.javaClass.simpleName}", LogLevel.ERROR)
+            } finally {
+                _isLoading.emit(false)
+            }
+        }
+    }
+
+    private fun createRepo(repoName: String): Boolean {
+        return try {
+            val url = "https://api.github.com/user/repos"
+            val json = JSONObject().apply {
+                put("name", repoName)
+                put("private", false)
+                put("auto_init", true)
+            }
+            val mediaType = "application/json".toMediaType()
+            val requestBody = json.toString().toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", authHeader())
+                .addHeader("Accept", "application/vnd.github+json")
+                .post(requestBody)
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful
+        } catch (e: Exception) {
+            log("Fehler beim Repo erstellen: ${e.message ?: e.javaClass.simpleName}", LogLevel.ERROR)
+            false
+        }
+    }
+
+    /**
+     * Laedt eine Datei direkt hoch ohne SHA (fuer brandneue Dateien in einem frischen Repo).
+     */
+    private fun uploadFileDirectly(path: String, content: String): Boolean {
+        return try {
+            val url = "https://api.github.com/repos/$owner/$repo/contents/$path"
+            val encodedContent = android.util.Base64.encodeToString(content.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+
+            val json = JSONObject().apply {
+                put("message", "Add $path")
+                put("content", encodedContent)
+            }
+
+            val mediaType = "application/json".toMediaType()
+            val requestBody = json.toString().toRequestBody(mediaType)
+
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", authHeader())
+                .addHeader("Accept", "application/vnd.github+json")
+                .put(requestBody)
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            response.isSuccessful
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun loadFiles(path: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.emit(true)
@@ -412,28 +515,4 @@ class GitHubViewModel : ViewModel() {
                     .build()
 
                 val response = httpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    log("Download fehlgeschlagen: HTTP ${response.code}", LogLevel.ERROR)
-                    return@withContext null
-                }
-
-                response.body?.bytes()
-            } catch (e: Exception) {
-                log("Fehler beim Download: ${e.message ?: e.javaClass.simpleName}", LogLevel.ERROR)
-                null
-            }
-        }
-    }
-
-    private fun extractErrorMessage(body: String): String {
-        return try {
-            JSONObject(body).optString("message", "Unbekannter Fehler")
-        } catch (e: Exception) {
-            "Unbekannter Fehler"
-        }
-    }
-
-    fun clearLogs() {
-        _logs.value = emptyList()
-    }
-}
+                if (!response.isS
