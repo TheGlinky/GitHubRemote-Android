@@ -623,3 +623,145 @@ fun extractApkFromZip(zipBytes: ByteArray, activity: ComponentActivity): String?
         return null
     }
 }
+@Composable
+fun NewProjectScreen(viewModel: GitHubViewModel, onCreated: () -> Unit) {
+    var appName by remember { mutableStateOf("") }
+    var repoName by remember { mutableStateOf("") }
+    val logs by viewModel.logs.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    var hasStarted by remember { mutableStateOf(false) }
+
+    // Aus dem eingegebenen Namen automatisch alle Varianten ableiten
+    val packageSuffix = appName.lowercase().replace(Regex("[^a-z0-9]"), "")
+    val appNameCapitalized = appName.split(Regex("[^a-zA-Z0-9]")).filter { it.isNotEmpty() }
+        .joinToString("") { it.replaceFirstChar { c -> c.uppercase() } }
+
+    LaunchedEffect(appName) {
+        if (repoName.isEmpty() || repoName == appNameCapitalized.let { if (it.isEmpty()) "" else "$it-Android" }) {
+            repoName = if (appNameCapitalized.isNotEmpty()) "$appNameCapitalized-Android" else ""
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        Text(
+            "NEUES PROJEKT",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = AppTheme.Cyan,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Text(
+            "Erstellt ein neues GitHub-Repo mit komplettem Android-App-Grundgeruest (Gradle, Manifest, MainActivity, ViewModel, GitHub-Actions-Workflow).",
+            fontSize = 11.sp,
+            color = Color.Gray,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(bottom = 20.dp)
+        )
+
+        OutlinedTextField(
+            value = appName,
+            onValueChange = { appName = it },
+            label = { Text("App-Name (z.B. Wetter App)", color = AppTheme.Cyan) },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AppTheme.Cyan,
+                unfocusedBorderColor = AppTheme.Purple,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            )
+        )
+
+        if (appNameCapitalized.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(AppTheme.CardBg, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+                    .padding(bottom = 12.dp)
+            ) {
+                Column {
+                    Text("Vorschau:", color = Color.Gray, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text("Package: com.theglinky.$packageSuffix", color = AppTheme.Cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("Klassenname: $appNameCapitalized", color = AppTheme.Cyan, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+
+        OutlinedTextField(
+            value = repoName,
+            onValueChange = { repoName = it },
+            label = { Text("Repository-Name", color = AppTheme.Cyan) },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AppTheme.Cyan,
+                unfocusedBorderColor = AppTheme.Purple,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White
+            )
+        )
+
+        Button(
+            onClick = {
+                hasStarted = true
+                viewModel.createNewProject(repoName, packageSuffix, appNameCapitalized, appName)
+            },
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AppTheme.Purple),
+            enabled = !isLoading && appName.isNotEmpty() && repoName.isNotEmpty() && packageSuffix.isNotEmpty()
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(color = AppTheme.Cyan, modifier = Modifier.size(20.dp))
+            } else {
+                Text("PROJEKT ERSTELLEN", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (hasStarted && !isLoading && logs.isNotEmpty() && logs.last().level == LogLevel.SUCCESS && logs.last().message.startsWith("Projekt komplett")) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onCreated,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = AppTheme.Cyan)
+            ) {
+                Text("ZU DEN DATEIEN", fontFamily = FontFamily.Monospace, color = Color.Black)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (logs.isNotEmpty()) {
+            Text("Log", color = Color.Gray, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(bottom = 6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(Color(0xFF050810), RoundedCornerShape(8.dp))
+                    .padding(10.dp)
+            ) {
+                LazyColumn {
+                    items(logs.takeLast(30)) { entry ->
+                        val color = when (entry.level) {
+                            LogLevel.SUCCESS -> Color(0xFF00FF66)
+                            LogLevel.ERROR -> Color(0xFFFF3355)
+                            LogLevel.WARNING -> Color(0xFFFFC107)
+                            LogLevel.INFO -> Color(0xFF888888)
+                        }
+                        Text(
+                            "${entry.timestamp}  ${entry.message}",
+                            color = color,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
