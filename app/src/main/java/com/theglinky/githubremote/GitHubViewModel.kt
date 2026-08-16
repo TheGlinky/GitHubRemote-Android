@@ -232,7 +232,6 @@ class GitHubViewModel : ViewModel() {
             false
         }
     }
-
     fun loadFiles(path: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.emit(true)
@@ -515,4 +514,29 @@ class GitHubViewModel : ViewModel() {
                     .build()
 
                 val response = httpClient.newCall(request).execute()
-                if (!response.isS
+                if (!response.isSuccessful) {
+                    log("Download fehlgeschlagen: HTTP ${response.code}", LogLevel.ERROR)
+                    return@withContext null
+                }
+
+                response.body?.bytes()
+            } catch (e: Exception) {
+                log("Fehler beim Download: ${e.message ?: e.javaClass.simpleName}", LogLevel.ERROR)
+                null
+            }
+        }
+    }
+
+    private fun extractErrorMessage(body: String): String {
+        return try {
+            JSONObject(body).optString("message", "Unbekannter Fehler")
+        } catch (e: Exception) {
+            "Unbekannter Fehler"
+        }
+    }
+
+    fun clearLogs() {
+        _logs.value = emptyList()
+    }
+}
+
