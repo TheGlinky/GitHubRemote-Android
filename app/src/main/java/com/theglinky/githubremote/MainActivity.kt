@@ -61,6 +61,7 @@ sealed class Screen {
     object FileBrowser : Screen()
     object FileEditor : Screen()
     object Actions : Screen()
+    object NewProject : Screen()
 }
 
 @Composable
@@ -96,6 +97,10 @@ fun GitHubRemoteApp(viewModel: GitHubViewModel, activity: ComponentActivity) {
                         currentScreen = Screen.Actions
                         viewModel.loadWorkflowRuns()
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TabButton("+ Neu", currentScreen == Screen.NewProject) {
+                        currentScreen = Screen.NewProject
+                    }
                 }
                 TextButton(onClick = { viewModel.logout(); currentScreen = Screen.Login }) {
                     Text("Logout", color = AppTheme.Pink, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
@@ -114,6 +119,9 @@ fun GitHubRemoteApp(viewModel: GitHubViewModel, activity: ComponentActivity) {
                 currentScreen = Screen.FileBrowser
             }
             Screen.Actions -> ActionsScreen(viewModel, activity)
+            Screen.NewProject -> NewProjectScreen(viewModel) {
+                currentScreen = Screen.FileBrowser
+            }
         }
     }
 }
@@ -420,7 +428,6 @@ fun FileEditorScreen(viewModel: GitHubViewModel, path: String, onBack: () -> Uni
         }
     }
 }
-
 @Composable
 fun ActionsScreen(viewModel: GitHubViewModel, activity: ComponentActivity) {
     val logs by viewModel.logs.collectAsState()
@@ -616,4 +623,3 @@ fun extractApkFromZip(zipBytes: ByteArray, activity: ComponentActivity): String?
         return null
     }
 }
-
